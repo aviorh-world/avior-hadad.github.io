@@ -92,7 +92,7 @@
 <div class="container">
     <div style="text-align: center;">
         <h1>🚀 QA Dynamic Engine</h1>
-        <ol style="color:#94a3b8;font-size:14px;max-width:560px;margin:0 auto 16px;line-height:2;text-align:left;display:inline-block;">
+        <ol id="introList" style="color:#94a3b8;font-size:14px;max-width:560px;margin:0 auto 16px;line-height:2;text-align:left;display:inline-block;">
             <li>Install the bookmarklet — drag it to your browser toolbar</li>
             <li>Click it on any target page — copies form fields as JSON</li>
             <li>Paste the JSON here — generates a full test suite</li>
@@ -752,9 +752,9 @@
             // סינון כפתורים
             const filterBar = document.getElementById('filterBar');
             filterBar.innerHTML = `
-                <button class="filter-btn active" onclick="filterResults('all')">${t.all} (${allTestsData.length})</button>
-                <button class="filter-btn" onclick="filterResults('pass')">${t.pass} (${passCount})</button>
-                <button class="filter-btn" onclick="filterResults('fail')">${t.fail} (${failCount})</button>
+                <button class="filter-btn active" onclick="filterResults('all', this)">${t.all} (${allTestsData.length})</button>
+                <button class="filter-btn" onclick="filterResults('pass', this)">${t.pass} (${passCount})</button>
+                <button class="filter-btn" onclick="filterResults('fail', this)">${t.fail} (${failCount})</button>
             `;
 
             renderTable(allTestsData);
@@ -765,14 +765,20 @@
         }
     }
 
-    function filterResults(filter) {
+    function filterResults(filter, srcBtn) {
         currentFilter = filter;
         const filtered = filter === 'all' ? allTestsData : allTestsData.filter(t => filter === 'pass' ? t.pass : !t.pass);
         renderTable(filtered);
 
-        // עדכון כפתורים פעילים
         document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-        event.target.classList.add('active');
+        if (srcBtn) {
+            srcBtn.classList.add('active');
+        } else {
+            const match = Array.from(document.querySelectorAll('.filter-btn')).find(btn =>
+                btn.getAttribute('onclick') && btn.getAttribute('onclick').includes("'" + filter + "'")
+            );
+            if (match) match.classList.add('active');
+        }
     }
 
     function renderTable(tests) {
@@ -915,7 +921,13 @@
             passOverride: 'Mark as Pass',
             failOverride: 'Mark as Fail',
             resetOverride: 'Default',
-            copied: 'הועתק!'
+            copied: 'הועתק!',
+            introItems: [
+                'התקן את הבוקמרקלט — גרור אותו לסרגל הכלים של הדפדפן',
+                'לחץ עליו בכל עמוד יעד — מעתיק שדות טופס כ-JSON',
+                'הדבק את ה-JSON כאן — מייצר סוויטת בדיקות מלאה',
+                'הרץ בקונסול הדפדפן — הדבק את התוצאות בחזרה לניתוח'
+            ]
         },
         en: {
             title: '🚀 QA Dynamic Engine',
@@ -958,7 +970,13 @@
             passOverride: 'Mark as Pass',
             failOverride: 'Mark as Fail',
             resetOverride: 'Default',
-            copied: 'Copied!'
+            copied: 'Copied!',
+            introItems: [
+                'Install the bookmarklet — drag it to your browser toolbar',
+                'Click it on any target page — copies form fields as JSON',
+                'Paste the JSON here — generates a full test suite',
+                'Run it in the browser console — paste results back for analysis'
+            ]
         }
     };
 
@@ -972,6 +990,11 @@
 
         // עדכון כל הטקסטים
         document.querySelector('h1').innerText = t.title;
+        const introList = document.getElementById('introList');
+        if (introList && t.introItems) {
+            introList.innerHTML = t.introItems.map(item => `<li>${item}</li>`).join('');
+            introList.style.textAlign = currentLanguage === 'he' ? 'right' : 'left';
+        }
         document.querySelector('.clear-btn-fixed').innerText = t.clearBtn;
         document.querySelector('.lang-toggle').innerText = t.langBtn;
         document.querySelectorAll('h3')[0].innerText = t.setupZone;
@@ -1064,9 +1087,9 @@
             const filterBar = document.getElementById('filterBar');
             if(filterBar) {
                 filterBar.innerHTML = `
-                    <button class="filter-btn active" onclick="filterResults('all')">${t.all} (${allTestsData.length})</button>
-                    <button class="filter-btn" onclick="filterResults('pass')">${t.pass} (${passCount2})</button>
-                    <button class="filter-btn" onclick="filterResults('fail')">${t.fail} (${failCount2})</button>
+                    <button class="filter-btn active" onclick="filterResults('all', this)">${t.all} (${allTestsData.length})</button>
+                    <button class="filter-btn" onclick="filterResults('pass', this)">${t.pass} (${passCount2})</button>
+                    <button class="filter-btn" onclick="filterResults('fail', this)">${t.fail} (${failCount2})</button>
                 `;
             }
 
