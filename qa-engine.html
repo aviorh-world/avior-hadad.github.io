@@ -168,60 +168,40 @@
     </div>
 </div>
 <script>
-    document.getElementById('updateLabel').innerText = 'Updated: 13 May 2026, 15:20';
-    
+    document.getElementById('updateLabel').innerText = 'Updated: 13 May 2026, 15:40';
+    var _bCode = '';
     (function() {
-        const bookmarkletCode = `
-(function(){
-    var d = {
-        url: window.location.href,
-        forms: Array.from(document.forms).map(function(f, idx){
-            return {
-                id: f.id || f.name || 'form_' + idx,
-                inputs: Array.from(f.elements)
-                    .filter(function(e){ return ['INPUT','TEXTAREA','SELECT'].includes(e.tagName); })
-                    .map(function(e){
-                        var obj = {
-                            name: e.name || e.id,
-                            type: e.tagName === 'SELECT' ? 'select' : e.type,
-                            placeholder: e.placeholder || ''
-                        };
-                        if(e.tagName === 'SELECT'){
-                            obj.options = Array.from(e.options).map(function(opt){
-                                return {value: opt.value, text: opt.text};
-                            });
-                        }
-                        return obj;
-                    })
-            };
-        })
-    };
-    var json = JSON.stringify(d, null, 2);
-    navigator.clipboard.writeText(json).then(function(){
-        alert('✅ Page data copied!\\n\\nPaste it into QA Dynamic Engine.');
-    }).catch(function(){
-        var p = prompt('📋 Copy the JSON below (Ctrl+A, Ctrl+C):', json);
-        if(!p) alert('JSON is ready in the prompt above.');
-    });
-})();
-        `.trim();
-
-        // Build the final bookmarklet URL with proper encoding
-        const fullBookmarklet = 'javascript:' + encodeURIComponent(bookmarkletCode);
-        
-        const link = document.getElementById('bookmarkletLink');
-        link.href = fullBookmarklet;
-        
-        // Store for copy function
-        window._bCode = fullBookmarklet;
+        var code = '(function(){';
+        code += 'var d={url:window.location.href,';
+        code += 'forms:Array.from(document.forms).map(function(f,idx){';
+        code += "return {id:f.id||f.name||'form_'+idx,";
+        code += "inputs:Array.from(f.elements).filter(function(e){return ['INPUT','TEXTAREA','SELECT'].includes(e.tagName)}).map(function(e){";
+        code += "var obj={name:e.name||e.id,type:e.tagName==='SELECT'?'select':e.type,placeholder:e.placeholder||''};";
+        code += "if(e.tagName==='SELECT'){obj.options=Array.from(e.options).map(function(opt){return {value:opt.value,text:opt.text}})}";
+        code += 'return obj})}))};';
+        code += 'if(d.forms.length===0){';
+        code += "var all=document.querySelectorAll('input,textarea,select');";
+        code += "d.forms=[{id:'page_inputs',inputs:Array.from(all).map(function(e){";
+        code += "var obj={name:e.name||e.id||e.placeholder||'f'+Math.random().toString(36).slice(2,5),type:e.tagName==='SELECT'?'select':e.type,placeholder:e.placeholder||''};";
+        code += "if(e.tagName==='SELECT'){obj.options=Array.from(e.options).map(function(opt){return {value:opt.value,text:opt.text}})}";
+        code += 'return obj})}];}';
+        code += 'var json=JSON.stringify(d,null,2);';
+        code += 'navigator.clipboard.writeText(json).then(function(){';
+        code += "alert('Copied! Paste into QA Dynamic Engine.');";
+        code += '}).catch(function(){';
+        code += "prompt('Copy this JSON:',json);";
+        code += '});';
+        code += '})();';
+        _bCode = 'javascript:' + encodeURIComponent(code);
+        document.getElementById('bookmarkletLink').href = _bCode;
     })();
-    
+
     function copyBookmarklet() {
-        if (!window._bCode) return;
-        navigator.clipboard.writeText(window._bCode).then(function() {
-            alert('✅ Bookmarklet URL copied!\n\nTo install:\n1. Create a new bookmark\n2. Paste this as the URL\n3. Click the bookmark on any target page');
+        if (!_bCode) return;
+        navigator.clipboard.writeText(_bCode).then(function() {
+            alert('✅ Bookmarklet URL copied!\n\nTo install:\n1. Create a new bookmark in your browser\n2. Paste this as the bookmark URL\n3. Then click the bookmark on any page to extract its form data');
         }).catch(function() {
-            prompt('Copy this bookmarklet URL:', window._bCode);
+            prompt('Copy this URL and paste it as a new bookmark URL:', _bCode);
         });
     }
 
@@ -344,7 +324,7 @@
             const hasType = el.getAttribute('type') || el.tagName.toLowerCase();
             log('  Input type: ' + hasType, true, 'test', i.name, '', 'Field should have proper input type');
 
-            // בדוק אם זה SELECT (dropdown) או custom combobox עם listbox
+            // בדוק אם זה SELECT (דרופדאון) או custom combobox עם listbox
             const isSelect = el.tagName === 'SELECT' || i.type === 'select';
             const isCombobox = el.getAttribute('aria-controls') && (el.tagName === 'INPUT' || el.role === 'combobox');
 
@@ -410,7 +390,7 @@
                             }
                         }
 
-                    await delay(300); // חכה יותר זמן לדרופדוונס עם cascading
+                    await delay(300); // חכה יותר זמן לדרופדאונס עם cascading
 
                     // בדוק אם יש שגיאה
                     let hasError = false;
