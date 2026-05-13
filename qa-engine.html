@@ -169,35 +169,59 @@
 </div>
 <script>
     document.getElementById('updateLabel').innerText = 'Updated: 13 May 2026, 15:20';
-    var _bCode = '';
+    
     (function() {
-        var s = 'javascript:(function(){';
-        s += 'var d={url:window.location.href,';
-        s += 'forms:Array.from(document.forms).map(function(f,idx){';
-        s += "return {id:f.id||f.name||'form_'+idx,";
-        s += "inputs:Array.from(f.elements).filter(function(e){return ['INPUT','TEXTAREA','SELECT'].includes(e.tagName)}).map(function(e){";
-        s += "var obj={name:e.name||e.id,type:e.tagName==='SELECT'?'select':e.type,placeholder:e.placeholder||''};";
-        s += "if(e.tagName==='SELECT'){obj.options=Array.from(e.options).map(function(opt){return {value:opt.value,text:opt.text}})}";
-        s += 'return obj})}))};';
-        s += 'var json=JSON.stringify(d,null,2);';
-        s += 'navigator.clipboard.writeText(json).then(function(){';
-        s += "alert('✅ Page data copied!\\n\\nPaste it into QA Dynamic Engine.');";
-        s += '}).catch(function(err){';
-        s += 'var w=window.open();';
-        s += "w.document.write('<pre>'+json+'<\\/pre>');";
-        s += "alert('⚠️ Clipboard not available.\\n\\nJSON shown in new window. Select all (Ctrl+A) and copy (Ctrl+C).');";
-        s += '});';
-        s += '})();';
-        _bCode = s;
-        document.getElementById('bookmarkletLink').href = s;
-    })();
+        const bookmarkletCode = `
+(function(){
+    var d = {
+        url: window.location.href,
+        forms: Array.from(document.forms).map(function(f, idx){
+            return {
+                id: f.id || f.name || 'form_' + idx,
+                inputs: Array.from(f.elements)
+                    .filter(function(e){ return ['INPUT','TEXTAREA','SELECT'].includes(e.tagName); })
+                    .map(function(e){
+                        var obj = {
+                            name: e.name || e.id,
+                            type: e.tagName === 'SELECT' ? 'select' : e.type,
+                            placeholder: e.placeholder || ''
+                        };
+                        if(e.tagName === 'SELECT'){
+                            obj.options = Array.from(e.options).map(function(opt){
+                                return {value: opt.value, text: opt.text};
+                            });
+                        }
+                        return obj;
+                    })
+            };
+        })
+    };
+    var json = JSON.stringify(d, null, 2);
+    navigator.clipboard.writeText(json).then(function(){
+        alert('✅ Page data copied!\\n\\nPaste it into QA Dynamic Engine.');
+    }).catch(function(){
+        var p = prompt('📋 Copy the JSON below (Ctrl+A, Ctrl+C):', json);
+        if(!p) alert('JSON is ready in the prompt above.');
+    });
+})();
+        `.trim();
 
+        // Build the final bookmarklet URL with proper encoding
+        const fullBookmarklet = 'javascript:' + encodeURIComponent(bookmarkletCode);
+        
+        const link = document.getElementById('bookmarkletLink');
+        link.href = fullBookmarklet;
+        
+        // Store for copy function
+        window._bCode = fullBookmarklet;
+    })();
+    
     function copyBookmarklet() {
-        if (!_bCode) return;
-        navigator.clipboard.writeText(_bCode).then(function() {
-            alert('✅ Bookmarklet URL copied!\n\nTo install:\n1. Create a new bookmark in your browser\n2. Paste this as the bookmark URL\n3. Then click the bookmark on any page to extract its form data');
+        if (!window._bCode) return;
+        navigator.clipboard.writeText(window._bCode).then(function() {
+            alert('✅ Bookmarklet URL copied!\n\nTo install:\n1. Create a new bookmark\n2. Paste this as the URL\n3. Click the bookmark on any target page');
         }).catch(function() {
-            prompt('Copy this URL and paste it as a new bookmark URL:', _bCode);
+            prompt('Copy this bookmarklet URL:', window._bCode);
         });
     }
 
