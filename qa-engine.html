@@ -274,34 +274,85 @@
 
     const now = new Date();
     const dateYearsAgo = (y) => { const d = new Date(now); d.setFullYear(d.getFullYear() - y); return (d.getMonth()+1).toString().padStart(2,'0') + '/' + d.getDate().toString().padStart(2,'0') + '/' + d.getFullYear(); };
+    // Per-value expectations.
+    // shouldPass=true  -> field must accept the value
+    // shouldPass=false -> field must reject the value
+    // shouldPass=null  -> context-dependent / report-only (no PASS/FAIL assertion)
     const testLibrary = {
         email: {
-            values: ["valid@test.com", "plainaddress", "test@test.", "@domain.com", "a@b.c", " ".repeat(5) + "a@b.com"],
-            expected: "Valid emails should pass, invalid format should show error or be rejected"
+            values: [
+                { value: "valid@test.com",     shouldPass: true,  expected: "Valid email format — should be accepted" },
+                { value: "plainaddress",       shouldPass: false, expected: "Missing '@' — should be rejected" },
+                { value: "user@",              shouldPass: false, expected: "Missing domain — should be rejected" },
+                { value: "@domain.com",        shouldPass: false, expected: "Missing local part — should be rejected" },
+                { value: "user@domain",        shouldPass: false, expected: "Missing TLD — should be rejected" },
+                { value: "user @domain.com",   shouldPass: false, expected: "Contains space — should be rejected" }
+            ],
+            expected: "Email validation"
         },
         tel: {
-            values: ["0501234567", "123", "abc", "+972-50-123-4567", "0".repeat(15), "!@#$%^"],
-            expected: "Valid phone numbers should pass, invalid format should show error or be rejected"
+            values: [
+                { value: "0501234567",         shouldPass: true,  expected: "10-digit mobile format — should be accepted" },
+                { value: "+1-555-123-4567",    shouldPass: true,  expected: "International format with country code — should be accepted" },
+                { value: "abc",                shouldPass: false, expected: "Letters only — should be rejected" },
+                { value: "!@#$%^",             shouldPass: false, expected: "Symbols — should be rejected" },
+                { value: "12",                 shouldPass: false, expected: "Too short (2 digits) — should be rejected" },
+                { value: "0".repeat(20),       shouldPass: false, expected: "Too long (20 digits) — should be rejected" }
+            ],
+            expected: "Phone validation"
         },
         number: {
-            values: ["100", "-1", "abc", "3.14", "!@#", "0".repeat(15)],
-            expected: "Only numeric values should pass, letters/symbols should be rejected"
+            values: [
+                { value: "100",                shouldPass: true,  expected: "Positive integer — should be accepted" },
+                { value: "0",                  shouldPass: true,  expected: "Zero — should be accepted" },
+                { value: "abc",                shouldPass: false, expected: "Letters — should be rejected (non-numeric)" },
+                { value: "!@#",                shouldPass: false, expected: "Symbols — should be rejected (non-numeric)" },
+                { value: "-1",                 shouldPass: null,  expected: "Negative — depends on field's min attribute" },
+                { value: "3.14",               shouldPass: null,  expected: "Decimal — depends on field's step attribute" },
+                { value: "1e10",               shouldPass: null,  expected: "Scientific notation — depends on field's parser" }
+            ],
+            expected: "Number validation"
         },
         zip: {
-            values: ["12345", "abc", "!@#$%", "   ", "A1234"],
-            expected: "Only numeric values should pass, letters/symbols should be rejected"
+            values: [
+                { value: "12345",              shouldPass: true,  expected: "US 5-digit ZIP — should be accepted" },
+                { value: "abc",                shouldPass: false, expected: "Letters only — should be rejected" },
+                { value: "!@#$%",              shouldPass: false, expected: "Symbols — should be rejected" },
+                { value: "   ",                shouldPass: false, expected: "Whitespace only — should be rejected" },
+                { value: "12345-6789",         shouldPass: null,  expected: "US extended (ZIP+4) — depends on accepted formats" },
+                { value: "M5V 3A8",            shouldPass: null,  expected: "Canadian postal code — only if international supported" }
+            ],
+            expected: "Postal code validation"
         },
         text: {
-            values: ["Standard", "<script>alert(1)<\\/script>", "' OR '1'='1", "A".repeat(500), "   ", "אימוג'י 🔥"],
-            expected: "Should accept text input and display properly"
+            values: [
+                { value: "Standard text",      shouldPass: null,  expected: "Normal text input — should be accepted" },
+                { value: "<script>alert(1)<\\/script>", shouldPass: false, expected: "XSS payload — must be rejected or escaped (SECURITY)" },
+                { value: "' OR '1'='1",        shouldPass: false, expected: "SQL injection payload — must be rejected or escaped (SECURITY)" },
+                { value: "A".repeat(500),      shouldPass: null,  expected: "500 characters — depends on field's maxlength" },
+                { value: "   ",                shouldPass: null,  expected: "Whitespace only — depends on required/trim behaviour" },
+                { value: "café résumé",        shouldPass: null,  expected: "Accented Unicode characters — should be accepted" },
+                { value: "🔥💯",                shouldPass: null,  expected: "Emoji — should be accepted or gracefully filtered" }
+            ],
+            expected: "Text input"
         },
         checkbox: {
-            values: ["toggle"],
-            expected: "Checkbox should toggle between checked and unchecked"
+            values: [
+                { value: "toggle",             shouldPass: true,  expected: "Checkbox should toggle state on click" }
+            ],
+            expected: "Checkbox toggle"
         },
         birthdate: {
-            values: [dateYearsAgo(30), dateYearsAgo(17), dateYearsAgo(125), dateYearsAgo(18), dateYearsAgo(120), "13/45/2000", "not-a-date"],
-            expected: "Birthdate must be between 18 and 120 years old"
+            values: [
+                { value: dateYearsAgo(30),     shouldPass: true,  expected: "Age 30 (valid range) — should be accepted" },
+                { value: dateYearsAgo(18),     shouldPass: true,  expected: "Age 18 (lower boundary) — should be accepted" },
+                { value: dateYearsAgo(120),    shouldPass: true,  expected: "Age 120 (upper boundary) — should be accepted" },
+                { value: dateYearsAgo(17),     shouldPass: false, expected: "Age 17 (under 18) — should be rejected" },
+                { value: dateYearsAgo(125),    shouldPass: false, expected: "Age 125 (over 120) — should be rejected" },
+                { value: "13/45/2000",         shouldPass: false, expected: "Invalid date (month 13, day 45) — should be rejected" },
+                { value: "not-a-date",         shouldPass: false, expected: "Non-date string — should be rejected" }
+            ],
+            expected: "Birthdate (18–120 years)"
         }
     };
     const forms = ${JSON.stringify(data.forms)};
@@ -474,7 +525,12 @@
                 log('Toggled checkbox: ' + i.name, true, 'test', i.name, 'toggle', testLibrary.checkbox.expected);
                 await delay(50);
             } else {
-                for(const val of values) {
+                for(const valItem of values) {
+                    // Support both legacy string entries and new {value, shouldPass, expected} objects
+                    const val          = (typeof valItem === 'object' && valItem !== null) ? valItem.value      : valItem;
+                    const shouldPass   = (typeof valItem === 'object' && valItem !== null) ? valItem.shouldPass : undefined;
+                    const valExpected  = (typeof valItem === 'object' && valItem !== null && valItem.expected) ? valItem.expected : expectedResult;
+
                     el.value = ""; // Reset
                     el.focus();
                     const alertsBefore = snapshotAlerts();
@@ -504,8 +560,6 @@
 
                     // Check 4: value accepted by field
                     const valueAccepted = el.value === val;
-
-                    // אם הערך לא התקבל - זה ברור שיש שגיאה
                     if(!valueAccepted && val.length > 0) {
                         hasError = true;
                         if(!errorMessage) {
@@ -513,102 +567,40 @@
                         }
                     }
 
-                    // קבע את ה-expected result בהתאם לערך שמוכנס
-                    let testPassed = false;
-                    let resultMessage = val;
-                    let expectedForValue = expectedResult;
+                    // Determine PASS/FAIL from the explicit per-value expectation.
+                    // No more regex re-derivation — testLibrary owns the truth.
+                    let testPassed;
+                    let resultMessage;
+                    const isSecurityTest = valExpected && valExpected.indexOf('SECURITY') !== -1;
 
-                    if(cat === 'zip' || cat === 'number') {
-                        // שדות אלה צריכים לדחות אותיות וסימנים
-                        const isNumeric = /^[0-9]+$/.test(val);
-                        const shouldPass = isNumeric ? !hasError : hasError;
-                        testPassed = shouldPass;
-                        resultMessage = isNumeric ? (hasError ? 'FAIL - should accept numbers' : 'PASS') : (hasError ? 'PASS - correctly rejected' : 'FAIL - should reject');
-                        // תיקון: ה-expected צריך להיות בהתאם לערך בפועל
-                        if(isNumeric) {
-                            expectedForValue = 'Should be accepted';
-                        } else {
-                            expectedForValue = 'Should be rejected';
-                        }
-                    } else if(cat === 'email') {
-                        // אימייל צריך לדחות פורמט בלתי תקין
-                        const isValidEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(val);
-                        const shouldPass = isValidEmail ? !hasError : hasError;
-                        testPassed = shouldPass;
-                        expectedForValue = isValidEmail ? 'Should be accepted' : 'Should be rejected';
-                        resultMessage = isValidEmail ? (hasError ? 'FAIL - should accept valid email' : 'PASS') : (hasError ? 'PASS - correctly rejected' : 'FAIL - should reject');
-                    } else if(cat === 'tel') {
-                        // טלפון צריך לדחות פורמט בלתי תקין
-                        const isValidPhone = /^[0-9+\\-\\s()]+$/.test(val);
-                        const shouldPass = isValidPhone ? !hasError : hasError;
-                        testPassed = shouldPass;
-                        expectedForValue = isValidPhone ? 'Should be accepted' : 'Should be rejected';
-                        resultMessage = isValidPhone ? (hasError ? 'FAIL - should accept valid phone' : 'PASS') : (hasError ? 'PASS - correctly rejected' : 'FAIL - should reject');
-                    } else if(cat === 'birthdate') {
-                        const parsed = new Date(val);
-                        const isValidDate = !isNaN(parsed.getTime()) && val.match(/\\d{2}\\/\\d{2}\\/\\d{4}/);
-                        if(!isValidDate) {
-                            testPassed = hasError;
-                            expectedForValue = 'Should be rejected (invalid date format)';
-                            resultMessage = hasError ? 'PASS - correctly rejected invalid format' : 'FAIL - accepted invalid date format';
-                        } else {
-                            const ageMs = Date.now() - parsed.getTime();
-                            const ageYears = ageMs / (365.25 * 24 * 60 * 60 * 1000);
-                            if(ageYears < 18) {
-                                testPassed = hasError;
-                                expectedForValue = 'Should be rejected (under 18)';
-                                resultMessage = hasError ? 'PASS - correctly rejected underage' : '🔴 FAIL - accepted underage date';
-                            } else if(ageYears > 120) {
-                                testPassed = hasError;
-                                expectedForValue = 'Should be rejected (over 120 years)';
-                                resultMessage = hasError ? 'PASS - correctly rejected age over 120' : '🔴 FAIL - accepted age over 120';
-                            } else {
-                                testPassed = !hasError;
-                                expectedForValue = 'Should be accepted (age 18–120)';
-                                resultMessage = hasError ? 'FAIL - should accept valid birthdate' : 'PASS';
-                            }
-                        }
-                    } else {
-                        // שדות TEXT - בדוק אם יש ערכים מסוכנים (XSS, SQL Injection)
-                        const isSuspiciousValue = /(<script|javascript:|onerror=|onclick=|'.*OR.*'|DROP|DELETE|UNION|SELECT)/i.test(val);
-
-                        if(isSuspiciousValue) {
-                            // ערכים מסוכנים צריכים תמיד להיות מדוחים
-                            testPassed = hasError;
-                            expectedForValue = 'Should be rejected (Security)';
+                    if(shouldPass === true) {
+                        testPassed = !hasError;
+                        resultMessage = !hasError ? 'PASS - correctly accepted' : 'FAIL - should have been accepted';
+                    } else if(shouldPass === false) {
+                        testPassed = hasError;
+                        if(isSecurityTest) {
                             resultMessage = hasError ? 'PASS - correctly blocked security threat' : '🔴 FAIL - SECURITY RISK: accepted malicious input!';
                         } else {
-                            // ערכים רגילים - יש לדווח בלבד, לא להכריע
-                            testPassed = null; // null = דיווח בלבד, לא PASS/FAIL מוגדר
-                            expectedForValue = 'Manual review needed';
-                            resultMessage = !hasError ? 'Accepted input' : 'Rejected input';
+                            resultMessage = hasError ? 'PASS - correctly rejected' : 'FAIL - should have been rejected';
                         }
+                    } else {
+                        // shouldPass is null/undefined -> report-only (context-dependent)
+                        testPassed = null;
+                        resultMessage = hasError ? 'Rejected input (report only)' : 'Accepted input (report only)';
                     }
 
-                    // אם testPassed הוא null, זה דיווח בלבד (לא PASS/FAIL מוגדר)
                     const passStatus = testPassed !== null ? testPassed : true;
 
-                    // בנה את ההודעה - רק הוסף errorMessage אם הוא בפועל משהו חשוב
                     let fullMessage = '  Value: "' + val + '" - ' + resultMessage;
-
-                    // הוסף errorMessage רק אם:
-                    // 1. הוא לא ריק
-                    // 2. הוא לא "Option invalid" כברירת מחדל
-                    // 3. הוא לא "Value rejected by field (not accepted)"
                     if(errorMessage && errorMessage.trim().length > 0 &&
-                       !errorMessage.includes('Option invalid') &&
-                       !errorMessage.includes('not accepted') &&
+                       !errorMessage.includes('Value rejected by field') &&
                        errorMessage.length < 150) {
                         fullMessage += ' | Error: ' + errorMessage;
-                    } else if(hasError && !errorMessage) {
-                        // אם יש שגיאה אבל לא מצאנו הודעה - דווח על זה
-                        fullMessage += ' | Field rejected input (no error message found)';
-                    } else if(!hasError && val.length > 0) {
-                        // אם אין שגיאה והערך קיים - דווח שהערך התקבל
+                    } else if(!hasError && val.length > 0 && shouldPass !== true) {
                         fullMessage += ' | Field accepted input';
                     }
 
-                    log(fullMessage, passStatus, 'test', i.name, val, expectedForValue);
+                    log(fullMessage, passStatus, 'test', i.name, val, valExpected);
                     await delay(80);
                 }
             }
