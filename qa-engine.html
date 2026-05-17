@@ -98,7 +98,7 @@
                 Install bookmarklet &nbsp;&rarr;&nbsp; Click on any target page &nbsp;&rarr;&nbsp; Paste JSON here &nbsp;&rarr;&nbsp; Run in console &nbsp;&rarr;&nbsp; Analyze results
             </p>
             <div style="max-width:700px;margin:0 auto 12px;border-radius:12px;overflow:hidden;">
-                <iframe src="https://drive.google.com/file/d/1rfm42h07xfD4nmAq0eMVlqBbrBXMJyLG/preview"
+                <iframe src="https://drive.google.com/file/d/1XNnAIONRiR-3NJEtQU7W_sBZThqEPlYj/preview"
                         width="100%" height="394" allow="autoplay" frameborder="0"
                         style="display:block;border:none;border-radius:12px;"></iframe>
             </div>
@@ -526,7 +526,6 @@
                 await delay(50);
             } else {
                 for(const valItem of values) {
-                    // Support both legacy string entries and new {value, shouldPass, expected} objects
                     const val          = (typeof valItem === 'object' && valItem !== null) ? valItem.value      : valItem;
                     const shouldPass   = (typeof valItem === 'object' && valItem !== null) ? valItem.shouldPass : undefined;
                     const valExpected  = (typeof valItem === 'object' && valItem !== null && valItem.expected) ? valItem.expected : expectedResult;
@@ -543,32 +542,24 @@
                     let hasError = false;
                     let errorMessage = '';
 
-                    // Check 1: field-scoped error (closest form container, avoids CDK LiveAnnouncer bleed)
                     const scopedErr = findFieldScopedError(el);
                     if(scopedErr) { errorMessage = scopedErr; hasError = true; }
 
-                    // Check 2: CSS invalid classes on the field
                     if(!hasError && (el.classList.contains('is-invalid') || el.classList.contains('error') || el.classList.contains('ng-invalid') || el.classList.contains('invalid') || el.getAttribute('aria-invalid') === 'true')) {
                         hasError = true;
                     }
 
-                    // Check 3: newly appeared/changed live-region text (catches Angular CDK announcer for this field only)
                     if(!errorMessage) {
                         const newAlert = diffAlerts(alertsBefore);
                         if(newAlert) { errorMessage = newAlert; hasError = true; }
                     }
 
-                    // Check 4: value accepted by field
                     const valueAccepted = el.value === val;
                     if(!valueAccepted && val.length > 0) {
                         hasError = true;
-                        if(!errorMessage) {
-                            errorMessage = 'Value rejected by field (not accepted)';
-                        }
+                        if(!errorMessage) { errorMessage = 'Value rejected by field (not accepted)'; }
                     }
 
-                    // Determine PASS/FAIL from the explicit per-value expectation.
-                    // No more regex re-derivation — testLibrary owns the truth.
                     let testPassed;
                     let resultMessage;
                     const isSecurityTest = valExpected && valExpected.indexOf('SECURITY') !== -1;
@@ -584,7 +575,6 @@
                             resultMessage = hasError ? 'PASS - correctly rejected' : 'FAIL - should have been rejected';
                         }
                     } else {
-                        // shouldPass is null/undefined -> report-only (context-dependent)
                         testPassed = null;
                         resultMessage = hasError ? 'Rejected input (report only)' : 'Accepted input (report only)';
                     }
@@ -995,7 +985,125 @@
         const raw = document.getElementById('inputJson').value;
         if(!raw) return;
         const data = JSON.parse(raw);
-        const content = `import { test, expect } from '@playwright/test';\n\ntest('Deep QA Scan', async ({ page }) => {\n  await page.goto('${data.url || ''}');\n  ${data.forms.map(f => `// Form: ${f.id}\n  ${f.inputs.map(i => `await page.locator('[name="${i.name}"]').fill('QA Data');`).join('\n  ')}`).join('\n  ')}\n});`;
+
+        const allFields = [];
+        (data.forms || []).forEach(f => (f.inputs || []).forEach(i => {
+            allFields.push({ name: i.name, type: i.type || 'text', formId: f.id });
+        }));
+
+        const content =
+`import { test, expect } from '@playwright/test';
+
+// === CONFIG ===
+// Per-field timeout (ms). Short enough one stuck field can't burn the suite,
+// long enough for async-loaded SPA fields to appear.
+const FIELD_TIMEOUT = 5000;
+
+// Set true to bypass readonly fields via direct DOM write.
+// Useful for verifying the BACKEND enforces readonly (not just the client UI).
+const FORCE_READONLY = false;
+
+// Set true to make the test FAIL when any field hits an ERROR.
+// Default false: the test is a REPORT, not a hard assertion.
+const FAIL_ON_ERROR = false;
+
+const FIELDS = ${JSON.stringify(allFields, null, 2)};
+
+test('Deep QA Scan — resilient fill', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto(${JSON.stringify(data.url || '')});
+
+  const summary = [];
+
+  for (const field of FIELDS) {
+    const result = { field: field.name, form: field.formId, status: 'PENDING', note: '' };
+    const locator = page.locator(\`[name="\${field.name}"]\`).first();
+
+    try {
+      // Fast existence probe — if not in DOM, try ONE wait, then NOT_FOUND.
+      const initialCount = await page.locator(\`[name="\${field.name}"]\`).count();
+      if (initialCount === 0) {
+        try {
+          await locator.waitFor({ state: 'attached', timeout: FIELD_TIMEOUT });
+        } catch {
+          result.status = 'NOT_FOUND';
+          result.note = \`no [name="\${field.name}"] in DOM (waited \${FIELD_TIMEOUT}ms)\`;
+          summary.push(result);
+          console.log(\`⚪ \${result.field.padEnd(28)} \${result.status.padEnd(10)} \${result.note}\`);
+          continue;
+        }
+      }
+
+      const state = await locator.evaluate(el => ({
+        readonly: el.readOnly || el.hasAttribute('readonly') || el.getAttribute('aria-readonly') === 'true',
+        disabled: el.disabled || el.getAttribute('aria-disabled') === 'true' || el.classList.contains('is-disabled'),
+        hidden:   el.offsetParent === null && getComputedStyle(el).position !== 'fixed',
+        tag:      el.tagName,
+        type:     el.type || ''
+      }));
+
+      if (state.hidden) {
+        result.status = 'SKIPPED'; result.note = 'hidden / not in layout';
+      } else if (state.disabled) {
+        result.status = 'SKIPPED'; result.note = 'disabled';
+      } else if (state.readonly && !FORCE_READONLY) {
+        result.status = 'SKIPPED'; result.note = 'readonly (set FORCE_READONLY=true to bypass via DOM)';
+      } else if (state.readonly && FORCE_READONLY) {
+        await locator.evaluate((el, v) => {
+          el.removeAttribute('readonly');
+          el.readOnly = false;
+          el.value = v;
+          el.dispatchEvent(new Event('input',  { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }, 'QA Data');
+        result.status = 'FILLED'; result.note = 'readonly bypassed via DOM';
+      } else if (field.type === 'checkbox') {
+        await locator.check({ timeout: FIELD_TIMEOUT, force: true });
+        result.status = 'FILLED'; result.note = 'checkbox toggled';
+      } else if (state.tag === 'SELECT') {
+        const options = await locator.evaluate(el => Array.from(el.options).map(o => o.value));
+        const pick = options.find(v => v && v !== '') || options[0] || '';
+        await locator.selectOption(pick, { timeout: FIELD_TIMEOUT });
+        result.status = 'FILLED'; result.note = \`selected "\${pick}"\`;
+      } else {
+        await locator.fill('QA Data', { timeout: FIELD_TIMEOUT });
+        result.status = 'FILLED';
+      }
+    } catch (err) {
+      result.status = 'ERROR';
+      result.note = (err && err.message ? err.message : String(err)).split('\\n')[0].slice(0, 200);
+    }
+
+    summary.push(result);
+    const icon = result.status === 'FILLED'    ? '✅'
+               : result.status === 'SKIPPED'   ? '⚠️'
+               : result.status === 'NOT_FOUND' ? '⚪'
+               : '❌';
+    console.log(\`\${icon} \${result.field.padEnd(28)} \${result.status.padEnd(10)} \${result.note}\`);
+  }
+
+  console.log('\\n=== Field-Fill Summary ===');
+  console.table(summary);
+
+  const filled   = summary.filter(r => r.status === 'FILLED').length;
+  const skipped  = summary.filter(r => r.status === 'SKIPPED').length;
+  const notFound = summary.filter(r => r.status === 'NOT_FOUND').length;
+  const errored  = summary.filter(r => r.status === 'ERROR').length;
+  console.log(\`Filled: \${filled} | Skipped: \${skipped} | NotFound: \${notFound} | Errored: \${errored} | Total: \${summary.length}\`);
+
+  await test.info().attach('field-fill-summary.json', {
+    body: JSON.stringify(summary, null, 2),
+    contentType: 'application/json'
+  });
+
+  // Default: this test is a REPORT — it always passes. The deliverable is the summary.
+  // Flip FAIL_ON_ERROR=true to assert on unexpected errors.
+  if (FAIL_ON_ERROR && errored > 0) {
+    throw new Error(\`\${errored} field(s) hit unexpected errors — see summary above\`);
+  }
+});
+`;
+
         const blob = new Blob([content], {type:'text/javascript'});
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'full_qa.spec.ts'; a.click();
     }
